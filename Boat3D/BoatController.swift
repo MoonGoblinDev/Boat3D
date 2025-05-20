@@ -1,5 +1,9 @@
 import SceneKit
-import SpriteKit 
+import SpriteKit
+import GLKit // Required for GLKQuaternionSlerp
+
+
+
 
 class BoatController: NSObject {
     // MARK: - Properties
@@ -18,15 +22,23 @@ class BoatController: NSObject {
     // Physics properties
     private let rotationForce: Float = 2.0
     private let forwardForce: Float = 5.0
+    private let verticalForce: Float = 3.0 // New: Force for up/down movement
     
     // Paddling timer control
     private var canPaddleLeft = true
     private var canPaddleRight = true
     private let paddlingInterval: TimeInterval = 0.1
     
+    // New: Vertical movement timer control
+    private var canMoveUp = true
+    private var canMoveDown = true
+    private let verticalMovementInterval: TimeInterval = 0.1 // Similar to paddling
+    
     // Keep track of key states
     private var leftKeyDown = false
     private var rightKeyDown = false
+    private var upKeyDown = false   // New
+    private var downKeyDown = false // New
     
     // MARK: - Initialization
     
@@ -37,50 +49,38 @@ class BoatController: NSObject {
         super.init()
         
         setupPhysics()
-        setupCamera() // setupCamera will now create and manage cameraPivotNode
+        setupCamera()
         setupKeyHandling()
     }
     
     // MARK: - Setup
     
     private func setupPhysics() {
-        // Create a physics body for the boat
         let shape = SCNPhysicsShape(node: boatNode, options: [SCNPhysicsShape.Option.keepAsCompound: true])
         let physicsBody = SCNPhysicsBody(type: .dynamic, shape: shape)
         
         physicsBody.mass = 10.0
         physicsBody.friction = 0.1
         physicsBody.restitution = 0.2
-        physicsBody.angularDamping = 0.1 // Increased angular damping can help stabilize
+        physicsBody.angularDamping = 0.1
         physicsBody.damping = 0.1
-        physicsBody.isAffectedByGravity = false
+        physicsBody.isAffectedByGravity = false // Important for controlled vertical movement
         boatNode.physicsBody = physicsBody
     }
     
     private func setupCamera() {
-        // Create a new pivot node. This pivot will smoothly follow the boat.
         cameraPivotNode = SCNNode()
-        
-        // Add the camera pivot to the scene. It should be at the same level as the boat or camera.
-        // We assume cameraNode is already in the scene, so we use its parent (likely scene's rootNode).
         guard let sceneRoot = cameraNode.parent else {
             fatalError("Camera node must be part of the scene graph before BoatController is initialized.")
         }
         sceneRoot.addChildNode(cameraPivotNode)
         
-        // Reparent the actual cameraNode to be a child of our new cameraPivotNode.
         cameraNode.removeFromParentNode()
         cameraPivotNode.addChildNode(cameraNode)
         
-        // Position the camera relative to the pivot (behind and above).
         cameraNode.position = SCNVector3(x: 0, y: CGFloat(cameraHeight), z: CGFloat(cameraDistance))
+        cameraNode.look(at: SCNVector3(0, 0, -cameraDistance * 0.25))
         
-        // Make the camera look towards a point slightly in front of the pivot's origin.
-        // (Pivot origin represents the boat's position).
-        cameraNode.look(at: SCNVector3(0, 0, -cameraDistance * 0.25)) // Look at a point relative to the pivot
-        
-        // Initialize pivot's transform to match the boat's current transform.
-        // Use presentation node if boat has physics, otherwise transform is fine.
         if boatNode.physicsBody != nil {
             cameraPivotNode.worldPosition = boatNode.presentation.worldPosition
             cameraPivotNode.worldOrientation = boatNode.presentation.worldOrientation
@@ -104,16 +104,44 @@ class BoatController: NSObject {
         }
     }
     
-    // MARK: - Key Handling (Unchanged)
+    // MARK: - Key Handling
     private func handleKeyDown(_ event: NSEvent) -> Bool {
+        // Ignore repeated key down events if we are already processing the key
+        if event.isARepeat {
+            // For continuous actions triggered by the timer, we don't need to re-trigger on repeat here.
+            // The timer-based repeat handles holding the key.
+            // However, if you wanted an action on *every* OS key repeat event, you'd handle it here.
+            // For now, we only care about the initial press to start the timed action.
+            switch event.keyCode {
+            case 123, 124, 125, 126: return true // Consume known repeat events
+            default: return false
+            }
+        }
+
         switch event.keyCode {
         case 123: // Left arrow key
-            leftKeyDown = true
-            paddleLeft()
+            if !leftKeyDown { // Process only if not already down (prevents re-triggering from system repeat)
+                leftKeyDown = true
+                paddleLeft()
+            }
             return true
         case 124: // Right arrow key
-            rightKeyDown = true
-            paddleRight()
+            if !rightKeyDown {
+                rightKeyDown = true
+                paddleRight()
+            }
+            return true
+        case 126: // Up arrow key (New)
+            if !upKeyDown {
+                upKeyDown = true
+                ascend()
+            }
+            return true
+        case 125: // Down arrow key (New)
+            if !downKeyDown {
+                downKeyDown = true
+                descend()
+            }
             return true
         default:
             return false
@@ -128,12 +156,18 @@ class BoatController: NSObject {
         case 124: // Right arrow key
             rightKeyDown = false
             return true
+        case 126: // Up arrow key (New)
+            upKeyDown = false
+            return true
+        case 125: // Down arrow key (New)
+            downKeyDown = false
+            return true
         default:
             return false
         }
     }
     
-    // MARK: - Paddling Controls (Unchanged, uses improved applyForwardForce)
+    // MARK: - Paddling Controls
     private func paddleLeft() {
         guard canPaddleLeft else { return }
         applyRotation(direction: -1)
@@ -155,11 +189,32 @@ class BoatController: NSObject {
             if self?.rightKeyDown == true { self?.paddleRight() }
         }
     }
+
+    // MARK: - Vertical Movement Controls (New)
+    private func ascend() {
+        guard canMoveUp else { return }
+        applyVerticalForce(direction: 1) // Positive direction for up
+        canMoveUp = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + verticalMovementInterval) { [weak self] in
+            self?.canMoveUp = true
+            if self?.upKeyDown == true { self?.ascend() }
+        }
+    }
+
+    private func descend() {
+        guard canMoveDown else { return }
+        applyVerticalForce(direction: -1) // Negative direction for down
+        canMoveDown = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + verticalMovementInterval) { [weak self] in
+            self?.canMoveDown = true
+            if self?.downKeyDown == true { self?.descend() }
+        }
+    }
     
-    // MARK: - Physics
+    // MARK: - Physics Application
     
     private func applyRotation(direction: Float) {
-        let torque = SCNVector4(0, 1, 0, direction * rotationForce) // Axis-angle (y-axis rotation)
+        let torque = SCNVector4(0, 1, 0, direction * rotationForce)
         boatNode.physicsBody?.applyTorque(torque, asImpulse: true)
     }
     
@@ -168,30 +223,21 @@ class BoatController: NSObject {
         case right
     }
     
-    // Improved applyForwardForce for more realistic sideways push
     private func applyForwardForce(paddleSide: PaddleSide) {
-        let boatPresentation = boatNode.presentation // Use presentation node for physics objects
-
-        // Get boat's local forward and right vectors in world space
+        let boatPresentation = boatNode.presentation
         let worldForward = boatPresentation.convertVector(SCNVector3(0, 0, -1), to: nil)
         let worldRight   = boatPresentation.convertVector(SCNVector3(1, 0, 0), to: nil)
         
-        // Determine side push scale: left paddle pushes boat slightly to its right, right paddle to its left
-        let sidePushScale: CGFloat = paddleSide == .left ? 0.15 : -0.15 // Adjust this factor as needed
-
-        // Combine forward thrust with a sideways component relative to the boat
+        let sidePushScale: CGFloat = paddleSide == .left ? 0.15 : -0.15
         var combinedDirection = worldForward + (worldRight * sidePushScale)
-        
-        // We want the force to be primarily in the horizontal (XZ) plane for a boat
-        combinedDirection.y = 0
+        combinedDirection.y = 0 // Keep movement in the XZ plane for forward paddling
         
         let normalizedForceDirection = combinedDirection.normalized()
 
-        // If the direction is very small (e.g., vectors cancelled out), fallback or do nothing
         if normalizedForceDirection.length() < 0.001 {
             var pureForward = worldForward
-            pureForward.y = 0 // Ensure pure forward is also horizontal
-            if pureForward.length() < 0.001 { return } // Boat is pointing straight up/down, no sensible horizontal force
+            pureForward.y = 0
+            if pureForward.length() < 0.001 { return }
 
             let fallbackForce = pureForward.normalized() * CGFloat(forwardForce)
             boatNode.physicsBody?.applyForce(fallbackForce, asImpulse: true)
@@ -202,27 +248,25 @@ class BoatController: NSObject {
         boatNode.physicsBody?.applyForce(force, asImpulse: true)
     }
 
-    // MARK: - Update Method (Called every frame)
+    // New: Apply vertical force
+    private func applyVerticalForce(direction: Float) {
+        // Force directly along the world Y-axis
+        let forceVector = SCNVector3(0, CGFloat(direction * verticalForce), 0)
+        boatNode.physicsBody?.applyForce(forceVector, asImpulse: true)
+    }
+
+    // MARK: - Update Method
     
-    public func update() { // deltaTime could be passed here for frame-rate independent smoothing
+    public func update() {
         guard let pivot = cameraPivotNode, boatNode.physicsBody != nil else { return }
 
-        // --- Smoothly update camera pivot's position to follow the boat ---
-        // Target position is the boat's presentation node's world position
         let targetPosition = boatNode.presentation.worldPosition
         pivot.worldPosition = SCNVector3.lerp(start: pivot.worldPosition,
                                               end: targetPosition,
                                               t: cameraPositionSmoothingFactor)
 
-        // --- Smoothly update camera pivot's orientation to follow the boat ---
-        // Target orientation is the boat's presentation node's world orientation
         let targetOrientation = boatNode.presentation.worldOrientation
-        // Original line:
-        // pivot.worldOrientation = SCNQuaternion.slerp(pivot.worldOrientation,
-        //                                              targetOrientation,
-        //                                              amount: cameraOrientationSmoothingFactor)
-
-        // Need to convert SCNQuaternion to GLKQuaternion and back
+        
         let startQuat = GLKQuaternionMake(Float(pivot.worldOrientation.x),
                                           Float(pivot.worldOrientation.y),
                                           Float(pivot.worldOrientation.z),
