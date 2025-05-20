@@ -1,104 +1,82 @@
-//
-//  GameViewController.swift
-//  Boat3D
-//
-//  Created by Bregas Satria Wicaksono on 19/05/25.
-//
-
 import SceneKit
-import QuartzCore
+// SpriteKit import might not be needed unless for UI elements not shown.
+// import SpriteKit
 
-class GameViewController: NSViewController {
+class GameViewController: NSViewController, SCNSceneRendererDelegate { // Conform to SCNSceneRendererDelegate
+    // MARK: - Properties
+    
+    var sceneView: SCNView!
+    var scene: SCNScene!
+    var boatController: BoatController!
+    
+    // MARK: - Lifecycle
     
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        // create a new scene
-        let scene = SCNScene(named: "art.scnassets/ship.scn")!
-        
-        // create and add a camera to the scene
-        let cameraNode = SCNNode()
-        cameraNode.camera = SCNCamera()
-        scene.rootNode.addChildNode(cameraNode)
-        
-        // place the camera
-        cameraNode.position = SCNVector3(x: 0, y: 0, z: 15)
-        
-        // create and add a light to the scene
-        let lightNode = SCNNode()
-        lightNode.light = SCNLight()
-        lightNode.light!.type = .omni
-        lightNode.position = SCNVector3(x: 0, y: 10, z: 10)
-        scene.rootNode.addChildNode(lightNode)
-        
-        // create and add an ambient light to the scene
-        let ambientLightNode = SCNNode()
-        ambientLightNode.light = SCNLight()
-        ambientLightNode.light!.type = .ambient
-        ambientLightNode.light!.color = NSColor.darkGray
-        scene.rootNode.addChildNode(ambientLightNode)
-        
-        // retrieve the ship node
-        let ship = scene.rootNode.childNode(withName: "ship", recursively: true)!
-        
-        // animate the 3d object
-        ship.runAction(SCNAction.repeatForever(SCNAction.rotateBy(x: 0, y: 2, z: 0, duration: 1)))
-        
-        // retrieve the SCNView
-        let scnView = self.view as! SCNView
-        
-        // set the scene to the view
-        scnView.scene = scene
-        
-        // allows the user to manipulate the camera
-        scnView.allowsCameraControl = true
-        
-        // show statistics such as fps and timing information
-        scnView.showsStatistics = true
-        
-        // configure the view
-        scnView.backgroundColor = NSColor.black
-        
-        // Add a click gesture recognizer
-        let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(handleClick(_:)))
-        var gestureRecognizers = scnView.gestureRecognizers
-        gestureRecognizers.insert(clickGesture, at: 0)
-        scnView.gestureRecognizers = gestureRecognizers
+        setupScene()
+        // Set the delegate for the scene view to receive update calls
+        sceneView.delegate = self
+        setupBoat()
     }
     
-    @objc
-    func handleClick(_ gestureRecognizer: NSGestureRecognizer) {
-        // retrieve the SCNView
-        let scnView = self.view as! SCNView
+    // MARK: - Setup
+    
+    private func setupScene() {
+        sceneView = SCNView(frame: view.bounds)
+        sceneView.autoresizingMask = [.width, .height]
+        view.addSubview(sceneView)
         
-        // check what nodes are clicked
-        let p = gestureRecognizer.location(in: scnView)
-        let hitResults = scnView.hitTest(p, options: [:])
-        // check that we clicked on at least one object
-        if hitResults.count > 0 {
-            // retrieved the first clicked object
-            let result = hitResults[0]
-            
-            // get its material
-            let material = result.node.geometry!.firstMaterial!
-            
-            // highlight it
-            SCNTransaction.begin()
-            SCNTransaction.animationDuration = 0.5
-            
-            // on completion - unhighlight
-            SCNTransaction.completionBlock = {
-                SCNTransaction.begin()
-                SCNTransaction.animationDuration = 0.5
-                
-                material.emission.contents = NSColor.black
-                
-                SCNTransaction.commit()
-            }
-            
-            material.emission.contents = NSColor.red
-            
-            SCNTransaction.commit()
+        guard let scene = SCNScene(named: "Main Scene.scn") else {
+            fatalError("Failed to load Main Scene.scn")
         }
+        self.scene = scene
+        
+        sceneView.scene = scene
+        sceneView.allowsCameraControl = false // Ensure built-in camera control is off
+        sceneView.showsStatistics = true
+        sceneView.backgroundColor = NSColor.blue.withAlphaComponent(0.5)
+        
+        let ambientLight = SCNNode()
+        ambientLight.light = SCNLight()
+        ambientLight.light?.type = .ambient
+        ambientLight.light?.intensity = 200 // Adjust intensity as needed
+        scene.rootNode.addChildNode(ambientLight)
+        
+        let directionalLight = SCNNode()
+        directionalLight.light = SCNLight()
+        directionalLight.light?.type = .directional
+        directionalLight.light?.color = NSColor.white
+        directionalLight.light?.castsShadow = true // Optional: for shadows
+        directionalLight.position = SCNVector3(x: 10, y: 20, z: 10)
+        directionalLight.look(at: SCNVector3Zero) // Point towards origin
+        scene.rootNode.addChildNode(directionalLight)
+    }
+    
+    private func setupBoat() {
+        guard let boatNode = scene.rootNode.childNode(withName: "Boat", recursively: true) else {
+            fatalError("Failed to find Boat node in scene")
+        }
+        
+        // Create a camera node (this is the node that has the SCNCamera component)
+        let cameraEntityNode = SCNNode()
+        cameraEntityNode.camera = SCNCamera()
+        cameraEntityNode.camera?.zFar = 1000 // Increased zFar
+        // Add camera to scene initially. BoatController will reparent it.
+        scene.rootNode.addChildNode(cameraEntityNode)
+        
+        // Create and set up the boat controller
+        // BoatController's setupCamera will handle placing cameraEntityNode correctly relative to its new pivot
+        boatController = BoatController(boatNode: boatNode, cameraNode: cameraEntityNode)
+        
+        // Set the SCNView's pointOfView to the camera node managed by BoatController
+        sceneView.pointOfView = cameraEntityNode
+    }
+    
+    // MARK: - SCNSceneRendererDelegate
+    
+    func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+        // Call the boatController's update method each frame
+        boatController?.update()
     }
 }

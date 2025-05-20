@@ -7,11 +7,18 @@
 
 import Cocoa
 
+// MARK: - Extension for macOS app delegate
+
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
+    var window: NSWindow!
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
-        // Insert code here to initialize your application
+        // Create the window
+
     }
     
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return true
+    }
 }
