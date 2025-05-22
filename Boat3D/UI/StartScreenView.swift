@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct StartScreen: View {
+struct StartScreenView: View {
     @State private var isAnimating: Bool = false
     @State private var textOffsetY: CGFloat = 0
 
