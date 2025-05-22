@@ -245,7 +245,7 @@ struct PlayerColumnView: View {
 }
 
 struct WaitingForPlayerView: View {
-    // Removed penColor, not used directly here anymore
+    var navigateToGame: () -> Void // Callback for navigation
 
     var body: some View {
         VStack(spacing: 30) {
@@ -270,7 +270,7 @@ struct WaitingForPlayerView: View {
             .padding(.bottom, 20)
             
             Button(action: {
-                print("Start Adventure pressed")
+                navigateToGame() // Trigger navigation
             }) {
                 HStack {
                     Text("Start Adventure")
@@ -292,14 +292,9 @@ struct WaitingForPlayerView: View {
     }
 }
 
-
-#Preview {
-    WaitingForPlayerView()
+// Update Preview
+struct WaitingForPlayerView_Previews: PreviewProvider { // Renamed from #Preview
+    static var previews: some View {
+        WaitingForPlayerView(navigateToGame: { print("Navigate to Game from preview") })
+    }
 }
-
-// StickFigureShape is no longer needed, so it can be removed or commented out.
-/*
-struct StickFigureShape: Shape {
-    // ... original implementation ...
-}
-*/
