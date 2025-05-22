@@ -1,10 +1,7 @@
-// App/GameViewController.swift
 import SceneKit
-import SwiftUI // For NSHostingView
-// SpriteKit import might not be needed unless for UI elements not shown.
-// import SpriteKit
+import SwiftUI
 
-class GameViewController: NSViewController, SCNSceneRendererDelegate, SCNPhysicsContactDelegate { // Conform to SCNPhysicsContactDelegate
+class GameViewController: NSViewController, SCNSceneRendererDelegate, SCNPhysicsContactDelegate {
     // MARK: - Properties
     
     var sceneView: SCNView!
@@ -14,7 +11,7 @@ class GameViewController: NSViewController, SCNSceneRendererDelegate, SCNPhysics
 
     // Game Logic
     var gameManager: GameManager!
-    var infoViewModel: InfoViewModel! // For SwiftUI
+    var infoViewModel: InfoViewModel!
 
     // SwiftUI Overlay
     var hostingView: NSHostingView<GameOverlayView>!
